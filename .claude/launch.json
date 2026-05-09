@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portfolio-dashboard",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "src.api:app", "--host", "127.0.0.1", "--port", "5175", "--reload"],
+      "cwd": "${workspaceFolder}",
+      "port": 5175
+    }
+  ]
+}

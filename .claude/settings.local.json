@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 src/ingestion.py)",
+      "Bash(python3 -X utf8 src/ingestion.py)",
+      "Bash(python3 -X utf8 -c ' *)",
+      "Bash(python3 -X utf8 src/prices.py)",
+      "Bash(python3 -X utf8 src/data_manager.py)",
+      "Bash(python3 -X utf8 data_manager.py)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(timeout 3 ping 127.0.0.1)",
+      "Bash(timeout 4 ping 127.0.0.1)"
+    ]
+  }
+}

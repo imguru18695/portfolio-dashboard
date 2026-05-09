@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UT Portfolio Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+
+    :root {
+      --ut-orange:  #BF5700;
+      --ut-dark:    #1a1f2e;
+      --ut-darker:  #141824;
+      --ut-sidebar: #0f1520;
+      --card-bg:    #ffffff;
+      --page-bg:    #f0f2f7;
+      --border:     #e2e8f0;
+      --text-muted: #64748b;
+    }
+
+    body { background: var(--page-bg); }
+
+    /* Sidebar */
+    .sidebar { background: var(--ut-sidebar); width: 240px; min-height: 100vh; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; color: #94a3b8; border-radius: 8px;
+      cursor: pointer; transition: all 0.15s; margin: 2px 10px;
+      font-size: 14px; font-weight: 500;
+    }
+    .nav-item:hover  { background: rgba(191,87,0,0.15); color: #fff; }
+    .nav-item.active { background: var(--ut-orange); color: #fff; }
+    .nav-item svg    { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg); border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
+      border: 1px solid var(--border);
+    }
+
+    /* KPI cards */
+    .kpi-card { padding: 20px 24px; }
+    .kpi-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi-value { font-size: 26px; font-weight: 700; color: #0f172a; margin: 4px 0; }
+    .kpi-sub   { font-size: 13px; color: var(--text-muted); }
+    .kpi-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+    }
+    .badge-up   { background: #dcfce7; color: #15803d; }
+    .badge-down { background: #fee2e2; color: #dc2626; }
+    .badge-neu  { background: #f1f5f9; color: #475569; }
+
+    /* Orange accent strip on left of KPI */
+    .kpi-accent { border-left: 4px solid var(--ut-orange); }
+
+    /* Section header */
+    .section-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+
+    /* Table */
+    .holdings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .holdings-table th {
+      background: #f8fafc; color: var(--text-muted);
+      font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+      cursor: pointer; white-space: nowrap;
+    }
+    .holdings-table th:hover { color: var(--ut-orange); }
+    .holdings-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    .holdings-table tr:hover td { background: #fafafa; }
+    .holdings-table tr:last-child td { border-bottom: none; }
+    .td-right { text-align: right; font-variant-numeric: tabular-nums; }
+    .td-ticker { font-weight: 700; color: var(--ut-orange); letter-spacing: 0.03em; }
+    .positive { color: #16a34a !important; font-weight: 600 !important; }
+    .negative { color: #dc2626 !important; font-weight: 600 !important; }
+    .neutral  { color: #64748b !important; }
+
+    /* Fund tab pills */
+    .fund-tab {
+      padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; border: 1.5px solid transparent;
+      color: var(--text-muted);
+    }
+    .fund-tab.active { background: var(--ut-orange); color: #fff; border-color: var(--ut-orange); }
+    .fund-tab:not(.active):hover { border-color: var(--ut-orange); color: var(--ut-orange); }
+
+    /* Status bar */
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-live   { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,0.25); animation: pulse 2s infinite; }
+    .dot-closed { background: #f59e0b; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
+    }
+
+    /* Page sections */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    /* Search box */
+    .search-box {
+      border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 7px 12px; font-size: 13px; outline: none;
+      transition: border-color 0.15s; width: 220px;
+    }
+    .search-box:focus { border-color: var(--ut-orange); }
+
+    /* Tooltip */
+    .tooltip { position: relative; }
+    .tooltip:hover::after {
+      content: attr(data-tip);
+      position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fff; padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; white-space: nowrap; z-index: 100;
+    }
+
+    /* Return table */
+    .ret-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .ret-table th { text-align:left; padding:6px 10px; font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; border-bottom:1px solid var(--border); }
+    .ret-table td { padding:7px 10px; border-bottom:1px solid #f8fafc; }
+    .ret-table tr:last-child td { border-bottom:none; }
+
+    /* Snap bar */
+    .snap-bar { display:flex; gap:24px; padding:12px 16px; background:#f8fafc; border-radius:8px; margin-bottom:12px; font-size:13px; flex-wrap:wrap; }
+    .snap-item label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; display:block; }
+    .snap-item span { font-weight:700; color:#0f172a; font-size:14px; }
+    .snap-pnl-val { font-weight:700; font-size:14px; }
+
+    /* Sorted column highlight */
+    .th-sorted { color: var(--ut-orange) !important; }
+
+    /* Fund section header */
+    .fund-section-header { margin-bottom: 16px; }
+    .fund-section-name { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+    .fund-section-date { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .fund-section-mv { font-size: 28px; font-weight: 800; color: #0f172a; }
+
+    /* Summary stat mini-cards */
+    .summary-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+    .stat-card { background: #f8fafc; border-radius: 8px; padding: 10px 14px; flex: 1; min-width: 110px; }
+    .stat-card-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+    .stat-card-value { font-size: 14px; font-weight: 700; color: #0f172a; }
+
+    /* Date picker & load btn */
+    .date-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .date-row label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+    .date-input {
+      border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; font-size: 13px; outline: none;
+      transition: border-color 0.15s; font-family: inherit;
+    }
+    .date-input:focus { border-color: var(--ut-orange); }
+    .load-btn {
+      background: var(--ut-orange); color: #fff; border: none;
+      border-radius: 8px; padding: 6px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .load-btn:hover { opacity: 0.88; }
+    .load-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Export btn */
+    .export-btn {
+      background: #f8fafc; border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+      color: var(--text-muted); transition: all 0.15s;
+    }
+    .export-btn:hover { border-color: var(--ut-orange); color: var(--ut-orange); }
+  </style>
+</head>
+<body class="flex">
+
+<!-- ============================================================ SIDEBAR -->
+<aside class="sidebar flex flex-col fixed top-0 left-0 h-full z-50">
+
+  <!-- Logo -->
+  <div class="px-5 py-5 border-b border-white/10">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+           style="background:var(--ut-orange)">UT</div>
+      <div>
+        <div class="text-white font-semibold text-sm leading-tight">Portfolio</div>
+        <div class="text-xs" style="color:#64748b">Dashboard</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 py-4 overflow-y-auto">
+    <div class="px-4 mb-2 text-xs font-semibold uppercase tracking-widest" style="color:#334155">Menu</div>
+
+    <div class="nav-item active" onclick="showPage('summary', this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+      </svg>
+      Summary
+    </div>
+
+    <div class="nav-item" onclick="showPage('holdings', this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
+      </svg>
+      Holdings
+    </div>
+
+    <div class="nav-item" onclick="showPage('breakdown', this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/>
+      </svg>
+      Breakdown
+    </div>
+
+    <div class="nav-item" onclick="showPage('analytics', this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      Analytics
+    </div>
+
+    <div class="nav-item" onclick="showPage('constraints', this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+      </svg>
+      Constraints
+    </div>
+  </nav>
+
+  <!-- Status footer -->
+  <div class="px-4 py-4 border-t border-white/10">
+    <div class="flex items-center gap-2 mb-2">
+      <div class="status-dot dot-live" id="market-dot"></div>
+      <span class="text-xs font-medium" style="color:#94a3b8" id="market-status">Market Open</span>
+    </div>
+    <div class="text-xs" style="color:#475569">Last refresh</div>
+    <div class="text-xs font-medium" style="color:#94a3b8" id="last-refresh">—</div>
+    <button id="refresh-btn" onclick="refreshData()"
+      class="mt-3 w-full text-xs font-semibold py-2 rounded-lg transition-all"
+      style="background:rgba(191,87,0,0.2);color:#f97316;border:1px solid rgba(191,87,0,0.3);"
+      onmouseover="this.style.background='var(--ut-orange)';this.style.color='#fff';"
+      onmouseout="this.style.background='rgba(191,87,0,0.2)';this.style.color='#f97316';">
+      ↻ Refresh Prices
+    </button>
+  </div>
+</aside>
+
+<!-- ============================================================ MAIN -->
+<main class="flex-1 min-h-screen overflow-y-auto" style="margin-left:240px;">
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-40 px-8 py-4 flex items-center justify-between"
+          style="background:rgba(240,242,247,0.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);">
+    <div>
+      <h1 class="text-lg font-bold text-slate-900" id="page-title">Portfolio Summary</h1>
+      <p class="text-xs" style="color:var(--text-muted)" id="page-subtitle">As of — &nbsp;·&nbsp; 2 Funds</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-xs font-medium px-3 py-1.5 rounded-full" style="background:#fff;border:1px solid var(--border);color:var(--text-muted)">
+        May 2, 2026
+      </div>
+      <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+           style="background:var(--ut-orange)">FM</div>
+    </div>
+  </header>
+
+  <div class="p-8">
+
+  <!-- ================================================================ PAGE: SUMMARY -->
+  <div class="page active" id="page-summary">
+
+    <!-- Two-column fund sections -->
+    <div class="grid grid-cols-2 gap-6 mb-6">
+
+      <!-- ---- Endowment Fund ---- -->
+      <div class="card p-6">
+        <!-- Fund header -->
+        <div class="fund-section-header">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-sm font-bold"
+                 style="background:var(--ut-orange)">EF</div>
+            <div>
+              <div class="fund-section-name">Endowment Fund</div>
+              <div class="fund-section-date" id="ef-as-of-date">As of —</div>
+            </div>
+          </div>
+          <div class="fund-section-mv" id="ef-current-value">—</div>
+        </div>
+
+        <!-- Return timeline table -->
+        <div class="mb-4">
+          <table class="ret-table">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Portfolio</th>
+                <th>Benchmark</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color:var(--text-muted);font-size:12px;">Mar'26 TD</td>
+                <td class="td-right" id="ef-ret-mtd">—</td>
+                <td class="td-right" style="color:var(--text-muted);">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Summary stats -->
+        <div class="summary-stats">
+          <div class="stat-card">
+            <div class="stat-card-label">Cost Basis</div>
+            <div class="stat-card-value" id="ef-cost">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Unrealized P&amp;L</div>
+            <div class="stat-card-value" id="ef-upnl">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Unrealized %</div>
+            <div class="stat-card-value" id="ef-upnl-pct">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Positions</div>
+            <div class="stat-card-value" id="ef-pos-count">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- Longhorn Fund ---- -->
+      <div class="card p-6">
+        <!-- Fund header -->
+        <div class="fund-section-header">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-sm font-bold"
+                 style="background:#1e3a5f">LH</div>
+            <div>
+              <div class="fund-section-name">Longhorn Fund</div>
+              <div class="fund-section-date" id="lh-as-of-date">As of —</div>
+            </div>
+          </div>
+          <div class="fund-section-mv" id="lh-current-value">—</div>
+        </div>
+
+        <!-- Return timeline table -->
+        <div class="mb-4">
+          <table class="ret-table">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Portfolio</th>
+                <th>Benchmark</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color:var(--text-muted);font-size:12px;">Mar'26 TD</td>
+                <td class="td-right" id="lh-ret-mtd">—</td>
+                <td class="td-right" style="color:var(--text-muted);">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Summary stats -->
+        <div class="summary-stats">
+          <div class="stat-card">
+            <div class="stat-card-label">Cost Basis</div>
+            <div class="stat-card-value" id="lh-cost">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Unrealized P&amp;L</div>
+            <div class="stat-card-value" id="lh-upnl">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Unrealized %</div>
+            <div class="stat-card-value" id="lh-upnl-pct">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Positions</div>
+            <div class="stat-card-value" id="lh-pos-count">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /grid 2-col -->
+
+    <!-- Top Movers — full width -->
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="section-title">Top Movers Today</div>
+        <span class="text-xs font-medium px-2 py-1 rounded" style="background:#f1f5f9;color:var(--text-muted)" id="movers-date">—</span>
+      </div>
+      <table class="holdings-table">
+        <thead>
+          <tr>
+            <th>Ticker</th><th>Security</th><th>Fund</th>
+            <th class="td-right">Daily P&amp;L</th><th class="td-right">Change %</th>
+          </tr>
+        </thead>
+        <tbody id="top-movers-body"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /page-summary -->
+
+  <!-- ================================================================ PAGE: HOLDINGS -->
+  <div class="page" id="page-holdings">
+
+    <!-- Fund tabs -->
+    <div class="flex gap-2 mb-5">
+      <div class="fund-tab active" id="tab-endowment" onclick="filterFund('endowment', this)">Endowment Fund</div>
+      <div class="fund-tab" id="tab-longhorn" onclick="filterFund('longhorn', this)">Longhorn Fund</div>
+    </div>
+
+    <!-- Endowment date section -->
+    <div id="ef-date-section">
+      <div class="date-row">
+        <label>As of date:</label>
+        <input type="date" id="ef-date-picker" class="date-input" />
+        <button class="load-btn" id="ef-load-btn" onclick="loadSnapshot('endowment')">Load</button>
+      </div>
+      <!-- Snap bar — shown after load -->
+      <div class="snap-bar" id="ef-snap-bar" style="display:none;">
+        <div class="snap-item">
+          <label>Date</label>
+          <span id="ef-snap-date">—</span>
+        </div>
+        <div class="snap-item">
+          <label>Portfolio Value</label>
+          <span id="ef-snap-mv">—</span>
+        </div>
+        <div class="snap-item">
+          <label>Cost</label>
+          <span id="ef-snap-cost">—</span>
+        </div>
+        <div class="snap-item">
+          <label>P&amp;L %</label>
+          <span id="ef-snap-upnl-pct">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Longhorn date section -->
+    <div id="lh-date-section" style="display:none;">
+      <div class="date-row">
+        <label>As of date:</label>
+        <input type="date" id="lh-date-picker" class="date-input" />
+        <button class="load-btn" id="lh-load-btn" onclick="loadSnapshot('longhorn')">Load</button>
+      </div>
+      <!-- Snap bar — shown after load -->
+      <div class="snap-bar" id="lh-snap-bar" style="display:none;">
+        <div class="snap-item">
+          <label>Date</label>
+          <span id="lh-snap-date">—</span>
+        </div>
+        <div class="snap-item">
+          <label>Portfolio Value</label>
+          <span id="lh-snap-mv">—</span>
+        </div>
+        <div class="snap-item">
+          <label>Cost</label>
+          <span id="lh-snap-cost">—</span>
+        </div>
+        <div class="snap-item">
+          <label>P&amp;L %</label>
+          <span id="lh-snap-upnl-pct">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search + export row -->
+    <div class="flex items-center justify-between mb-4 mt-2">
+      <div class="flex items-center gap-3">
+        <input class="search-box" type="text" id="holdings-search" placeholder="Search ticker or name…" oninput="searchHoldings(this.value)" />
+        <div class="text-xs font-medium" style="color:var(--text-muted)" id="holdings-count">0 positions</div>
+      </div>
+      <button class="export-btn" id="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+
+    <!-- Table card -->
+    <div class="card overflow-hidden">
+      <div class="overflow-x-auto" style="max-height:68vh;overflow-y:auto;">
+        <table class="holdings-table">
+          <thead style="position:sticky;top:0;z-index:10;">
+            <tr>
+              <th id="sort-col-date"   onclick="sortTable('date')">Date ↕</th>
+              <th id="sort-col-ticker" onclick="sortTable('ticker')">Ticker ↕</th>
+              <th id="sort-col-name"   onclick="sortTable('name')">Security ↕</th>
+              <th class="td-right" id="sort-col-qty"   onclick="sortTable('qty')">Shares ↕</th>
+              <th class="td-right" id="sort-col-price" onclick="sortTable('price')">Price ↕</th>
+              <th class="td-right" id="sort-col-mv"    onclick="sortTable('mv')">Market Value ↕</th>
+              <th class="td-right" id="sort-col-wt"    onclick="sortTable('wt')">Weight ↕</th>
+              <th class="td-right" id="sort-col-cost"  onclick="sortTable('cost')">Cost Basis ↕</th>
+              <th class="td-right" id="sort-col-upnl"  onclick="sortTable('upnl')">Unreal. P&amp;L ↕</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /page-holdings -->
+
+  <!-- ================================================================ PAGE: BREAKDOWN -->
+  <div class="page" id="page-breakdown">
+    <div class="grid grid-cols-2 gap-4 mb-4">
+
+      <div class="card p-5">
+        <div class="section-title mb-1">Endowment Fund — Allocation</div>
+        <div class="text-xs mb-3" style="color:var(--text-muted)">By position weight (% of NAV)</div>
+        <div style="position:relative;height:300px;">
+          <canvas id="endowmentPie"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div class="section-title mb-1">Longhorn Fund — Top 15 Holdings</div>
+        <div class="text-xs mb-3" style="color:var(--text-muted)">By market value · Red = unrealized loss</div>
+        <div style="position:relative;height:300px;">
+          <canvas id="longhornBar"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grid grid-cols-3 gap-4">
+      <div class="card p-5 col-span-2">
+        <div class="section-title mb-1">Combined Portfolio — Weight vs. Daily P&L</div>
+        <div class="text-xs mb-3" style="color:var(--text-muted)">Bubble size = market value · Green = up · Red = down · Hover for detail</div>
+        <div style="position:relative;height:260px;">
+          <canvas id="bubbleChart"></canvas>
+        </div>
+      </div>
+      <div class="card p-5">
+        <div class="section-title mb-4">Longhorn — Top Unrealized Gains</div>
+        <div id="pnl-list" class="space-y-2 overflow-y-auto" style="max-height:280px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ PAGE: ANALYTICS -->
+  <div class="page" id="page-analytics">
+    <div class="card p-8 flex flex-col items-center justify-center" style="min-height:400px;">
+      <svg class="w-14 h-14 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="color:#cbd5e1">
+        <path stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      <div class="font-bold text-slate-700 text-lg mb-2">Analytics — Milestone 2</div>
+      <div class="text-sm text-center max-w-sm" style="color:var(--text-muted)">
+        Beta, Volatility, Sharpe Ratio, Tracking Error, Information Ratio and more — coming in the next milestone.
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ PAGE: CONSTRAINTS -->
+  <div class="page" id="page-constraints">
+    <div class="card p-8 flex flex-col items-center justify-center" style="min-height:400px;">
+      <svg class="w-14 h-14 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="color:#cbd5e1">
+        <path stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+      </svg>
+      <div class="font-bold text-slate-700 text-lg mb-2">Constraints Monitor — Milestone 2</div>
+      <div class="text-sm text-center max-w-sm" style="color:var(--text-muted)">
+        Position limits, sector concentration, beta bands and breach alerts — coming in the next milestone.
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /p-8 -->
+</main>
+
+<script>
+// ============================================================ API + STATE
+const API_BASE = window.location.port === '5175' ? 'http://127.0.0.1:5175' : '';
+
+// Holdings page state
+let loadedHoldings = [];        // raw rows for current active fund (from snapshot)
+let filteredHoldings = [];      // after search filter applied
+let currentFund = 'endowment';  // active holdings tab
+let sortKey = null, sortDir = -1;
+let availableDates = {};        // { endowment: ['2026-04-28',...], longhorn: [...] }
+
+// Summary page state
+let summaryData = {};
+let returnsData = {};
+
+// Breakdown charts
+let chartInstances = {};
+
+// ============================================================ FORMAT HELPERS
+const fmt     = v => v==null?'—':('$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}));
+const fmtFull = v => v==null?'—':('$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
+const fmtM    = v => v==null?'—':('$'+(Math.abs(v)/1e6).toFixed(2)+'M');
+const fmtN    = v => v==null?'—':v.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtP    = v => v==null?'—':((v>=0?'+':'')+v.toFixed(2)+'%');
+const cls     = v => v==null?'neutral':v>0?'positive':v<0?'negative':'neutral';
+const sign    = v => (v!=null&&v>=0)?'+':'−';
+
+// ============================================================ LOADING
+function showLoading(msg='Refreshing…') {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.textContent = '↻ '+msg; btn.disabled = true; }
+}
+function hideLoading() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.textContent = '↻ Refresh Prices'; btn.disabled = false; }
+}
+
+// ============================================================ MAP API ROW
+function mapRow(r) {
+  return {
+    date:   r.as_of_date||'—',
+    ticker: r.ticker||'—',
+    name:   r.security_name||'—',
+    fund:   r.fund_name||'—',
+    qty:    r.quantity,
+    price:  r.current_price,
+    mv:     r.market_value,
+    wt:     r.weight_pct,
+    cost:   r.cost_basis,
+    upnl:   r.unrealized_pnl,
+    dpnl:   r.daily_pnl,
+    dpct:   r.daily_pnl_pct,
+  };
+}
+
+// ============================================================ FETCH HELPERS
+async function apiFetch(path) {
+  const res = await fetch(API_BASE + path);
+  if (!res.ok) {
+    const err = new Error(path + ' failed: ' + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+// ============================================================ RENDER SUMMARY
+function renderSummary(s, returns) {
+  if (!s) return;
+  const ef = s.funds?.find(f => f.fund_name === 'Endowment Fund');
+  const lh = s.funds?.find(f => f.fund_name === 'Longhorn Fund');
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setHTML = (id, val) => { const el = document.getElementById(id); if (el) el.innerHTML = val; };
+  const setClass = (id, c) => { const el = document.getElementById(id); if (el) el.className = c; };
+
+  // Update page subtitle
+  set('page-subtitle', 'As of ' + (s.as_of_date || '—') + ' · 2 Funds · ' + (s.total_positions || '—') + ' Positions');
+
+  // Endowment Fund
+  if (ef) {
+    set('ef-current-value', fmtFull(ef.market_value));
+    set('ef-as-of-date', 'As of ' + (s.as_of_date || '—'));
+    set('ef-cost', fmtFull(ef.cost_basis));
+
+    const efUpnl = ef.unrealized_pnl;
+    const efUpnlEl = document.getElementById('ef-upnl');
+    if (efUpnlEl) {
+      efUpnlEl.textContent = (efUpnl != null ? (efUpnl >= 0 ? '+' : '−') : '') + fmtFull(efUpnl).replace('$','$');
+      efUpnlEl.className = 'stat-card-value ' + cls(efUpnl);
+    }
+
+    const efUpnlPct = (ef.cost_basis && ef.cost_basis !== 0) ? (efUpnl / ef.cost_basis * 100) : null;
+    const efUpnlPctEl = document.getElementById('ef-upnl-pct');
+    if (efUpnlPctEl) {
+      efUpnlPctEl.textContent = efUpnlPct != null ? (efUpnlPct >= 0 ? '+' : '') + efUpnlPct.toFixed(2) + '%' : '—';
+      efUpnlPctEl.className = 'stat-card-value ' + cls(efUpnlPct);
+    }
+
+    set('ef-pos-count', ef.positions != null ? ef.positions : '—');
+  }
+
+  // Longhorn Fund
+  if (lh) {
+    set('lh-current-value', fmtFull(lh.market_value));
+    set('lh-as-of-date', 'As of ' + (s.as_of_date || '—'));
+    set('lh-cost', fmtFull(lh.cost_basis));
+
+    const lhUpnl = lh.unrealized_pnl;
+    const lhUpnlEl = document.getElementById('lh-upnl');
+    if (lhUpnlEl) {
+      lhUpnlEl.textContent = (lhUpnl != null ? (lhUpnl >= 0 ? '+' : '−') : '') + fmtFull(lhUpnl).replace('$','$');
+      lhUpnlEl.className = 'stat-card-value ' + cls(lhUpnl);
+    }
+
+    const lhUpnlPct = (lh.cost_basis && lh.cost_basis !== 0) ? (lhUpnl / lh.cost_basis * 100) : null;
+    const lhUpnlPctEl = document.getElementById('lh-upnl-pct');
+    if (lhUpnlPctEl) {
+      lhUpnlPctEl.textContent = lhUpnlPct != null ? (lhUpnlPct >= 0 ? '+' : '') + lhUpnlPct.toFixed(2) + '%' : '—';
+      lhUpnlPctEl.className = 'stat-card-value ' + cls(lhUpnlPct);
+    }
+
+    set('lh-pos-count', lh.positions != null ? lh.positions : '—');
+  }
+
+  // Returns
+  if (returns) {
+    const efR = returns['Endowment Fund'] || {};
+    const lhR = returns['Longhorn Fund'] || {};
+
+    const setRet = (id, val) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (val == null) { el.textContent = '—'; el.className = 'td-right neutral'; return; }
+      el.textContent = (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
+      el.className = 'td-right ' + cls(val);
+    };
+
+    setRet('ef-ret-mtd', efR['mtd'] ?? null);
+    setRet('lh-ret-mtd', lhR['mtd'] ?? null);
+  }
+}
+
+// ============================================================ TOP MOVERS
+function renderTopMovers(movers) {
+  const body = document.getElementById('top-movers-body');
+  if (!body) return;
+  body.innerHTML = movers.map(r => `
+    <tr>
+      <td class="td-ticker">${r.ticker}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.name}</td>
+      <td><span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;
+        background:${r.fund==='Endowment Fund'?'#fff7ed':'#eff6ff'};
+        color:${r.fund==='Endowment Fund'?'#c2410c':'#1d4ed8'}">
+        ${r.fund==='Endowment Fund'?'Endowment':'Longhorn'}</span></td>
+      <td class="td-right ${cls(r.dpnl)}">${sign(r.dpnl)}${fmt(r.dpnl)}</td>
+      <td class="td-right ${cls(r.dpct)}">${fmtP(r.dpct)}</td>
+    </tr>`).join('');
+}
+
+// ============================================================ P&L LIST (breakdown page)
+function renderPnlList(data) {
+  const lh = data.filter(r => r.fund === 'Longhorn Fund').sort((a, b) => (b.upnl || 0) - (a.upnl || 0)).slice(0, 12);
+  const maxVal = Math.max(...lh.map(r => Math.abs(r.upnl || 0)), 1);
+  const el = document.getElementById('pnl-list');
+  if (!el) return;
+  el.innerHTML = lh.map(r => {
+    const pct = Math.min(Math.abs(r.upnl || 0) / maxVal * 100, 100);
+    return `<div>
+      <div class="flex justify-between text-xs mb-1">
+        <span class="font-semibold text-slate-700">${r.ticker}</span>
+        <span class="${cls(r.upnl)} font-semibold">${sign(r.upnl)}${fmt(r.upnl)}</span>
+      </div>
+      <div style="height:5px;background:#f1f5f9;border-radius:3px;">
+        <div style="height:100%;width:${pct}%;background:${(r.upnl||0)>=0?'#22c55e':'#ef4444'};border-radius:3px;"></div>
+      </div></div>`;
+  }).join('');
+}
+
+// ============================================================ HOLDINGS TABLE
+function renderHoldings() {
+  const body = document.getElementById('holdings-body');
+  if (!body) return;
+
+  if (filteredHoldings.length === 0) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">No data loaded — pick a date and click Load.</td></tr>';
+    document.getElementById('holdings-count').textContent = '0 positions';
+    return;
+  }
+
+  body.innerHTML = filteredHoldings.map(r => `
+    <tr>
+      <td>${r.date || '—'}</td>
+      <td class="td-ticker">${r.ticker}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.name}">${r.name}</td>
+      <td class="td-right">${fmtN(r.qty)}</td>
+      <td class="td-right">${r.price!=null?'$'+r.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
+      <td class="td-right">${fmtFull(r.mv)}</td>
+      <td class="td-right">${r.wt!=null?r.wt.toFixed(2)+'%':'—'}</td>
+      <td class="td-right">${fmtFull(r.cost)}</td>
+      <td class="td-right ${cls(r.upnl)}">${r.upnl!=null?(r.upnl>=0?'+':'−')+fmtFull(r.upnl).replace('$',''):'—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('holdings-count').textContent = filteredHoldings.length + ' positions';
+}
+
+// ============================================================ FILTER / SEARCH / SORT (holdings)
+function filterFund(fund, el) {
+  currentFund = fund;
+  document.querySelectorAll('.fund-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+
+  // Show/hide date sections
+  document.getElementById('ef-date-section').style.display = fund === 'endowment' ? '' : 'none';
+  document.getElementById('lh-date-section').style.display = fund === 'longhorn'  ? '' : 'none';
+
+  // Clear search
+  const searchBox = document.getElementById('holdings-search');
+  if (searchBox) searchBox.value = '';
+
+  // Clear table — new fund tab, no data yet shown (keep whatever was loaded for this tab)
+  loadedHoldings = [];
+  filteredHoldings = [];
+  renderHoldings();
+  clearSortHighlight();
+}
+
+function searchHoldings(q) {
+  const lower = (q || '').toLowerCase();
+  filteredHoldings = loadedHoldings.filter(r =>
+    r.ticker.toLowerCase().includes(lower) || r.name.toLowerCase().includes(lower)
+  );
+  renderHoldings();
+}
+
+function sortTable(key) {
+  if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = -1; }
+  filteredHoldings.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (typeof av === 'string' ? av.localeCompare(bv) : av - bv) * sortDir;
+  });
+  updateSortHighlight(key);
+  renderHoldings();
+}
+
+function clearSortHighlight() {
+  document.querySelectorAll('[id^="sort-col-"]').forEach(th => th.classList.remove('th-sorted'));
+  sortKey = null; sortDir = -1;
+}
+
+function updateSortHighlight(key) {
+  document.querySelectorAll('[id^="sort-col-"]').forEach(th => th.classList.remove('th-sorted'));
+  const th = document.getElementById('sort-col-' + key);
+  if (th) th.classList.add('th-sorted');
+}
+
+// ============================================================ SNAPSHOT LOAD
+async function loadSnapshot(fund) {
+  const prefix = fund === 'endowment' ? 'ef' : 'lh';
+  const picker = document.getElementById(prefix + '-date-picker');
+  const btn    = document.getElementById(prefix + '-load-btn');
+  const snapBar = document.getElementById(prefix + '-snap-bar');
+  const body   = document.getElementById('holdings-body');
+
+  const date = picker ? picker.value : '';
+  if (!date) { alert('Please select a date.'); return; }
+
+  // Show loading state
+  if (btn) btn.disabled = true;
+  if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Loading…</td></tr>';
+
+  try {
+    const json = await apiFetch(`/api/snapshot?fund=${fund}&date=${date}`);
+    const rows = (json.data || []).map(mapRow);
+
+    loadedHoldings = rows;
+    filteredHoldings = rows;
+
+    // Clear search
+    const searchBox = document.getElementById('holdings-search');
+    if (searchBox) searchBox.value = '';
+
+    clearSortHighlight();
+    renderHoldings();
+
+    // Populate snap bar
+    if (snapBar) {
+      const mvTotal  = rows.reduce((s, r) => s + (r.mv   || 0), 0);
+      const costTotal= rows.reduce((s, r) => s + (r.cost  || 0), 0);
+      const upnlTotal= rows.reduce((s, r) => s + (r.upnl  || 0), 0);
+      const pnlPct   = costTotal ? (upnlTotal / costTotal * 100) : null;
+
+      const setSnap = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      const setSnapClass = (id, c) => { const el = document.getElementById(id); if (el) el.className = c; };
+
+      setSnap(prefix + '-snap-date', date);
+      setSnap(prefix + '-snap-mv',   fmtFull(mvTotal));
+      setSnap(prefix + '-snap-cost', fmtFull(costTotal));
+
+      const pnlEl = document.getElementById(prefix + '-snap-upnl-pct');
+      if (pnlEl) {
+        pnlEl.textContent = pnlPct != null ? (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%' : '—';
+        pnlEl.className = 'snap-pnl-val ' + cls(pnlPct);
+      }
+
+      snapBar.style.display = 'flex';
+    }
+
+  } catch (err) {
+    loadedHoldings = [];
+    filteredHoldings = [];
+    if (err.status === 404) {
+      if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#dc2626;">No data available for this date.</td></tr>';
+    } else {
+      if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#dc2626;">Error loading data — ' + err.message + '</td></tr>';
+    }
+    if (snapBar) snapBar.style.display = 'none';
+    document.getElementById('holdings-count').textContent = '0 positions';
+    console.error('[Holdings] Snapshot error:', err);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ============================================================ CSV EXPORT
+function exportCSV() {
+  if (!filteredHoldings.length) { alert('No data to export.'); return; }
+  const headers = ['Date','Ticker','Security','Shares','Price','Market Value','Weight %','Cost Basis','Unrealized P&L'];
+  const rows = filteredHoldings.map(r => [
+    r.date || '',
+    r.ticker,
+    '"' + (r.name || '').replace(/"/g, '""') + '"',
+    r.qty != null ? r.qty : '',
+    r.price != null ? r.price : '',
+    r.mv   != null ? r.mv   : '',
+    r.wt   != null ? r.wt   : '',
+    r.cost != null ? r.cost : '',
+    r.upnl != null ? r.upnl : '',
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'holdings_' + currentFund + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================ CHARTS (breakdown page)
+function destroyChart(id) { if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; } }
+
+function initCharts(data, s) {
+  Chart.register(ChartDataLabels);
+  const orange = '#BF5700', navy = '#1e3a5f', grid = '#f1f5f9', muted = '#64748b';
+  const ef = s.funds?.find(f => f.fund_name === 'Endowment Fund');
+  const lh = s.funds?.find(f => f.fund_name === 'Longhorn Fund');
+
+  // Endowment Donut (breakdown)
+  const efRows = data.filter(r => r.fund === 'Endowment Fund');
+  const c12 = ['#BF5700','#1e3a5f','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#06b6d4','#ef4444','#64748b','#84cc16','#f97316','#0ea5e9'];
+  destroyChart('endowmentPie');
+  if (document.getElementById('endowmentPie')) {
+    chartInstances['endowmentPie'] = new Chart(document.getElementById('endowmentPie'), {
+      type: 'doughnut',
+      data: { labels: efRows.map(r => r.ticker), datasets: [{ data: efRows.map(r => r.wt || 0), backgroundColor: c12, borderWidth: 1, borderColor: '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+        plugins: { legend: { position: 'right', labels: { font: { size: 10 }, padding: 6 } },
+                   datalabels: { color: '#fff', font: { weight: 'bold', size: 9 }, formatter: (v, ctx) => v > 3 ? ctx.chart.data.labels[ctx.dataIndex] : '' } } }
+    });
+  }
+
+  // Longhorn Top 15 (breakdown)
+  const lhTop = data.filter(r => r.fund === 'Longhorn Fund').sort((a, b) => (b.mv || 0) - (a.mv || 0)).slice(0, 15);
+  destroyChart('longhornBar');
+  if (document.getElementById('longhornBar')) {
+    chartInstances['longhornBar'] = new Chart(document.getElementById('longhornBar'), {
+      type: 'bar',
+      data: { labels: lhTop.map(r => r.ticker), datasets: [{ data: lhTop.map(r => +((r.mv || 0) / 1e6).toFixed(2)),
+        backgroundColor: lhTop.map(r => (r.upnl || 0) >= 0 ? navy : '#ef4444'), borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false }, datalabels: { color: '#fff', font: { size: 9 }, formatter: v => '$' + v + 'M' } },
+        scales: { x: { grid: { color: grid }, ticks: { color: muted, font: { size: 9 }, callback: v => '$' + v + 'M' } },
+                  y: { grid: { display: false }, ticks: { color: muted, font: { size: 10, weight: 'bold' } } } } }
+    });
+  }
+
+  // Bubble chart
+  const top30 = data.slice(0, 30);
+  destroyChart('bubbleChart');
+  if (document.getElementById('bubbleChart')) {
+    chartInstances['bubbleChart'] = new Chart(document.getElementById('bubbleChart'), {
+      type: 'bubble',
+      data: { datasets: [{ data: top30.map(r => ({ x: r.wt || 0, y: r.dpct || 0, r: Math.sqrt(Math.abs(r.mv || 0) / 1e5) * 1.5, label: r.ticker, dpnl: r.dpnl })),
+        backgroundColor: top30.map(r => (r.dpct || 0) >= 0 ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'),
+        borderColor: top30.map(r => (r.dpct || 0) >= 0 ? '#16a34a' : '#dc2626'), borderWidth: 1 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, datalabels: { display: false },
+          tooltip: { callbacks: { label: ctx => { const d = ctx.raw; return `${d.label}: ${fmtP(d.y)} (${sign(d.dpnl)}${fmt(d.dpnl)})`; } } } },
+        scales: { x: { title: { display: true, text: 'Portfolio Weight (%)', font: { size: 11 } }, grid: { color: grid }, ticks: { color: muted, callback: v => v + '%' } },
+                  y: { title: { display: true, text: 'Daily Change (%)', font: { size: 11 } }, grid: { color: grid }, ticks: { color: muted, callback: v => v + '%' } } } }
+    });
+  }
+}
+
+// ============================================================ STATUS BAR
+async function updateStatusBar() {
+  try {
+    const s = await apiFetch('/api/status');
+    document.getElementById('market-status').textContent = s.is_market_hours ? 'Market Open' : 'Market Closed';
+    document.getElementById('market-dot').className = 'status-dot ' + (s.is_market_hours ? 'dot-live' : 'dot-closed');
+    if (s.prices_refreshed_at) {
+      document.getElementById('last-refresh').textContent =
+        new Date(s.prices_refreshed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' local';
+    }
+  } catch (e) { console.warn('Status fetch failed', e); }
+}
+
+// ============================================================ LOAD DATA
+async function loadData(force = false) {
+  showLoading(force ? 'Refreshing…' : 'Loading…');
+  try {
+    if (force) await fetch(API_BASE + '/api/refresh', { method: 'POST' });
+
+    // Parallel fetches
+    const [portfolioJson, s, moversJson, datesJson, returns] = await Promise.all([
+      apiFetch('/api/portfolio').then(j => j.data.map(mapRow)).catch(() => []),
+      apiFetch('/api/summary').catch(() => ({})),
+      apiFetch('/api/top-movers?n=8').then(j => j.data.map(mapRow)).catch(() => []),
+      apiFetch('/api/available-dates').catch(() => ({})),
+      apiFetch('/api/returns').catch(() => ({})),
+    ]);
+
+    summaryData = s;
+    returnsData = returns;
+
+    // Summary page
+    renderSummary(s, returns);
+
+    // Top movers
+    renderTopMovers(moversJson);
+    const moversDate = document.getElementById('movers-date');
+    if (moversDate && s.as_of_date) moversDate.textContent = s.as_of_date;
+
+    // P&L list (breakdown page)
+    renderPnlList(portfolioJson);
+
+    // Breakdown charts use portfolio data + summary
+    if (portfolioJson.length && s.funds) {
+      initCharts(portfolioJson, s);
+    }
+
+    // Available dates — populate date pickers
+    availableDates = datesJson || {};
+    const efDates = availableDates['endowment'] || availableDates['Endowment Fund'] || [];
+    const lhDates = availableDates['longhorn']  || availableDates['Longhorn Fund']  || [];
+
+    const efPicker = document.getElementById('ef-date-picker');
+    const lhPicker = document.getElementById('lh-date-picker');
+    if (efPicker && efDates.length) efPicker.value = efDates[0];
+    if (lhPicker && lhDates.length) lhPicker.value = lhDates[0];
+
+    await updateStatusBar();
+
+    document.getElementById('last-refresh').textContent =
+      new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' local';
+
+  } catch (err) {
+    console.error('[Dashboard] Load error:', err);
+    document.getElementById('last-refresh').textContent = 'Error — see console';
+  } finally {
+    hideLoading();
+  }
+}
+
+async function refreshData() { await loadData(true); }
+
+// ============================================================ NAV
+function showPage(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav .nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (el) el.classList.add('active');
+  const titles = {
+    summary:    ['Portfolio Summary', ''],
+    holdings:   ['Holdings', 'Full position detail across all funds'],
+    breakdown:  ['Breakdown & Allocation', 'Portfolio composition by fund'],
+    analytics:  ['Analytics', 'Risk metrics & performance attribution'],
+    constraints:['Constraints Monitor', 'Portfolio rule monitoring & breach alerts'],
+  };
+  document.getElementById('page-title').textContent = titles[page][0];
+  if (page !== 'summary') document.getElementById('page-subtitle').textContent = titles[page][1];
+  window.scrollTo(0, 0);
+}
+
+// ============================================================ BOOT
+document.addEventListener('DOMContentLoaded', () => {
+  loadData(false);
+  setInterval(() => loadData(false), 5 * 60 * 1000);  // auto-refresh every 5 min
+});
+</script>
+</body>
+</html>
