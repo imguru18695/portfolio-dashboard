@@ -1,6 +1,9 @@
 # Environment & secrets
 .env
 
+# Local reference docs — not for public repo
+SYSTEM_GUIDE.md
+
 # Real custodian data — never commit actual portfolio files
 Custodian Holdings/
 deploy/*.csv
