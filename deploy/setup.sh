@@ -3,7 +3,7 @@
 # Usage: bash deploy/setup.sh
 set -euo pipefail
 
-REPO_DIR="/home/ubuntu/dashboard"
+REPO_DIR="/home/tmiadashboardv2/dashboard"
 SERVICE_NAME="dashboard"
 
 echo "==> Installing system packages"

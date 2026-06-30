@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/dashboard
-ExecStart=/home/ubuntu/dashboard/venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 5175 --workers 2
+User=tmiadashboardv2
+WorkingDirectory=/home/tmiadashboardv2/dashboard
+ExecStart=/home/tmiadashboardv2/dashboard/venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 5175 --workers 2
 Restart=on-failure
 RestartSec=5
 
