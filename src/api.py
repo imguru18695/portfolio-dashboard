@@ -17,6 +17,8 @@ GET  /static/...             Serves static assets alongside index.html
 
 import math
 import os
+import re
+import time
 import secrets
 import base64
 import shutil
@@ -43,6 +45,13 @@ sys.path.insert(0, str(SRC_DIR))
 from data_manager import DataManager
 from ingestion import load_holdings_for_date, list_available_dates, HOLDINGS_FOLDER
 from prices import enrich_with_prices, calculate_period_returns
+try:
+    from signals import compute_signals, _get_rf_annual as _signals_get_rf
+except ImportError as _e:
+    import warnings
+    warnings.warn(f"[API] signals module unavailable ({_e}); /api/signals endpoints will return 503")
+    compute_signals = None
+    _signals_get_rf = None
 
 # ---------------------------------------------------------------------------
 # Auth configuration  (set DASHBOARD_USER / DASHBOARD_PASS env vars in prod)
@@ -52,8 +61,7 @@ _AUTH_ENABLED = os.environ.get("DASHBOARD_AUTH", "false").lower() == "true"
 _DASH_USER    = os.environ.get("DASHBOARD_USER", "utfunds")
 _DASH_PASS    = os.environ.get("DASHBOARD_PASS", "changeme")
 
-_UNPROTECTED  = {"/"}          # index.html needs no pre-auth (browser handles it)
-
+_ALLOWED_UPLOAD_EXT = {".csv", ".xls", ".xlsx"}
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
     """
@@ -200,7 +208,8 @@ def get_summary():
     total_cost     = df["cost_basis"].sum()
     total_unrealzd = df["unrealized_pnl"].sum() if "unrealized_pnl" in df.columns else total_mv - total_cost
     total_daily    = df["daily_pnl"].sum()       if "daily_pnl" in df.columns else 0.0
-    total_daily_pct= (total_daily / (total_mv - total_daily) * 100) if (total_mv - total_daily) != 0 else 0
+    prior_day_mv    = total_mv - total_daily
+    total_daily_pct = (total_daily / prior_day_mv * 100) if prior_day_mv != 0 else 0
 
     funds = []
     for fund_name, grp in df.groupby("fund_name"):
@@ -293,15 +302,14 @@ async def upload_holdings(file: UploadFile = File(...)):
     Usage (curl):
         curl -u utfunds:PASSWORD -F "file=@myfile.csv" https://<host>/api/upload
     """
-    allowed_ext = {".csv", ".xls", ".xlsx"}
     suffix = Path(file.filename).suffix.lower()
-    if suffix not in allowed_ext:
+    if suffix not in _ALLOWED_UPLOAD_EXT:
         raise HTTPException(status_code=400, detail=f"File type '{suffix}' not allowed. Use CSV or XLS/XLSX.")
 
-    dest = HOLDINGS_FOLDER / file.filename
+    dest = HOLDINGS_FOLDER / Path(file.filename).name   # .name strips any path components
     try:
-        with dest.open("wb") as f:
-            shutil.copyfileobj(file.file, f)
+        contents = await file.read()   # async read keeps the event loop free
+        dest.write_bytes(contents)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
     finally:
@@ -309,6 +317,46 @@ async def upload_holdings(file: UploadFile = File(...)):
 
     print(f"[API] Uploaded holdings file: {file.filename} → {dest}")
     return {"status": "ok", "saved_as": str(dest), "filename": file.filename}
+
+
+# ---------------------------------------------------------------------------
+# Base64 upload endpoint  (for Power Automate / programmatic callers)
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel
+
+class UploadB64Request(BaseModel):
+    filename: str
+    content: str   # base64-encoded file content (Power Automate sends this natively)
+
+@app.post("/api/upload-b64")
+async def upload_holdings_b64(req: UploadB64Request):
+    """
+    Upload a holdings file as a base64-encoded JSON payload.
+    Easier to call from Power Automate than multipart/form-data.
+
+    Body: { "filename": "file.csv", "content": "<base64>" }
+    """
+    suffix = Path(req.filename).suffix.lower()
+    if suffix not in _ALLOWED_UPLOAD_EXT:
+        raise HTTPException(status_code=400, detail=f"File type '{suffix}' not allowed.")
+
+    try:
+        # Strip all whitespace (MIME encoders add \r\n every 76 chars),
+        # then normalise URL-safe alphabet before validating.
+        normalized = re.sub(r"\s+", "", req.content).replace("-", "+").replace("_", "/")
+        file_bytes = base64.b64decode(normalized, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 content.")
+
+    dest = HOLDINGS_FOLDER / Path(req.filename).name   # .name strips any path components
+    try:
+        dest.write_bytes(file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+
+    print(f"[API] Uploaded (b64) holdings file: {req.filename} → {dest}")
+    return {"status": "ok", "saved_as": str(dest), "filename": req.filename}
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +439,83 @@ def get_returns():
         return returns
     except Exception as e:
         print(f"[API] Returns calculation error: {e}")
-        return {}
+        raise HTTPException(status_code=500, detail=f"Returns calculation failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Risk-free rate endpoint  (^IRX — 13-week T-bill, annualised %)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/risk-free-rate")
+def get_risk_free_rate():
+    """
+    Return the current 3-month T-bill yield (annualised %).
+    Uses the same 24-hour cache as the Sharpe ratio calculation so the
+    displayed rate always matches the rate used in signals.
+    """
+    if _signals_get_rf is not None:
+        rate_decimal = _signals_get_rf()   # cached decimal, e.g. 0.0425
+        return {"rate": round(rate_decimal * 100, 4), "source": "^IRX", "status": "live"}
+    return {"rate": 4.25, "source": "fallback", "status": "error"}
+
+
+# ---------------------------------------------------------------------------
+# Technical signals endpoints  (Risk Attribution + Momentum via yfinance)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/signals/{ticker}")
+def get_signals(ticker: str):
+    """Risk + momentum signals for a single ticker."""
+    if compute_signals is None:
+        raise HTTPException(status_code=503, detail="Signals module unavailable (yfinance not installed)")
+    data = compute_signals(ticker.upper())
+    return {"ticker": ticker.upper(), "signals": data}
+
+
+_BULK_SIGNALS_MAX = 50
+
+@app.get("/api/bulk-signals")
+def get_bulk_signals(tickers: str):
+    """
+    Risk + momentum signals for multiple tickers.
+    tickers: comma-separated list, e.g. 'AAPL,MSFT,NVDA'
+    Maximum 50 tickers per request.
+    """
+    if compute_signals is None:
+        raise HTTPException(status_code=503, detail="Signals module unavailable (yfinance not installed)")
+    ticker_list = [x.strip().upper() for x in tickers.split(",") if x.strip()]
+    if len(ticker_list) > _BULK_SIGNALS_MAX:
+        raise HTTPException(status_code=400, detail=f"Too many tickers: max {_BULK_SIGNALS_MAX}, got {len(ticker_list)}")
+    result = {}
+    for t in ticker_list:
+        result[t] = compute_signals(t)
+        time.sleep(0.1)
+    return {"signals": result}
+
+
+# ---------------------------------------------------------------------------
+# Benchmark data endpoint  (yfinance-backed)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/benchmark/{fund}")
+def get_benchmark(fund: str):
+    """
+    Returns benchmark data for 'endowment' or 'longhorn':
+      - returns:     {1d, 5d, 1m, 3m} as % floats
+      - cumulative:  12-point indexed series (1.0 = Feb 28, 2026 base)
+      - rolling_vol: 12-point 21D annualised vol series (%)
+      - composition: ETF breakdown (Endowment only)
+    """
+    fund = fund.lower()
+    if fund not in ("endowment", "longhorn"):
+        raise HTTPException(status_code=400, detail="fund must be 'endowment' or 'longhorn'")
+    try:
+        from benchmark import get_benchmark_data
+        data = get_benchmark_data(fund)
+        return data
+    except Exception as e:
+        print(f"[API] benchmark/{fund} error: {e}")
+        raise HTTPException(status_code=503, detail=f"Benchmark data unavailable: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -400,10 +524,24 @@ def get_returns():
 
 @app.get("/")
 def serve_index():
-    index = ROOT_DIR / "index.html"
-    if not index.exists():
-        raise HTTPException(status_code=404, detail="index.html not found")
-    return FileResponse(str(index))
+    # dashboard_v2.html is the active SPA; fall back to index.html if missing
+    for name in ("dashboard_v2.html", "index.html"):
+        f = ROOT_DIR / name
+        if f.exists():
+            return FileResponse(str(f), media_type="text/html")
+    raise HTTPException(status_code=404, detail="Dashboard HTML not found")
+
+
+@app.get("/{path:path}")
+def serve_spa(path: str):
+    """Catch-all: return the SPA for any non-API path so deep links work."""
+    if path == "api" or path.lower().startswith("api/"):
+        raise HTTPException(status_code=404, detail=f"Not found: /{path}")
+    for name in ("dashboard_v2.html", "index.html"):
+        f = ROOT_DIR / name
+        if f.exists():
+            return FileResponse(str(f), media_type="text/html")
+    raise HTTPException(status_code=404, detail="Dashboard HTML not found")
 
 
 # ---------------------------------------------------------------------------

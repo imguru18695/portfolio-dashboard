@@ -1,0 +1,20 @@
+[Unit]
+Description=UT Portfolio Dashboard (FastAPI)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dashboard
+ExecStart=/home/ubuntu/dashboard/venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 5175 --workers 2
+Restart=on-failure
+RestartSec=5
+
+# Secrets — set these before running: sudo systemctl edit dashboard
+# Environment=DASHBOARD_AUTH=true
+# Environment=DASHBOARD_USER=utfunds
+# Environment=DASHBOARD_PASS=<strong-password>
+
+[Install]
+WantedBy=multi-user.target
